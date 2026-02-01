@@ -3,10 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"kasir-api/database"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/viper"
 
 	_ "kasir-api/docs"
 
@@ -359,6 +363,39 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Load environment variable
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	if _, err := os.Stat(".env"); err == nil {
+		viper.SetConfigFile(".env")
+		_ = viper.ReadInConfig()
+	}
+
+	// Buat Data Model untuk menyimpan config variable
+	type Config struct {
+		Port    string `mapstructure:"PORT"`
+		DBConn string `mapstructure:"DB_CONN"`
+	}
+
+	config := Config{
+		Port:   viper.GetString("PORT"),
+		DBConn: viper.GetString("DB_CONN"),
+	}
+
+	//Setup database
+
+
+	db, err := database.InitDB(config.DBConn)
+	fmt.Println("DB Connection String:", config.DBConn)
+	if config.DBConn == "" {
+		log.Fatal("DB_CONN environment variable is not set")
+	}
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+	defer db.Close()
+
 	// ========== CATEGORY ROUTES ==========
 	http.HandleFunc("/api/categories/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
@@ -402,16 +439,10 @@ func main() {
 	// Swagger UI
 	http.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 
-	// Port untuk Zeabur (environment variable)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	fmt.Println("Server running di http://localhost:" + config.Port)
+	fmt.Println("Swagger UI: http://localhost:" + config.Port + "/swagger/index.html")
 
-	fmt.Println("Server running di http://localhost:" + port)
-	fmt.Println("Swagger UI: http://localhost:" + port + "/swagger/index.html")
-
-	err := http.ListenAndServe(":"+port, nil)
+	err = http.ListenAndServe(":"+ config.Port, nil)
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 	}
