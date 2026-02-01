@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"kasir-api/database"
+	"kasir-api/handlers"
+	"kasir-api/repositories"
+	"kasir-api/services"
 	"log"
 	"net/http"
 	"os"
@@ -39,168 +42,13 @@ type Produk struct {
 	Stok  int    `json:"stok" example:"100"`
 }
 
-// Category struct
-type Category struct {
-	ID          int    `json:"id" example:"1"`
-	Name        string `json:"name" example:"Makanan"`
-	Description string `json:"description" example:"Kategori untuk produk makanan"`
-}
-
 var produk = []Produk{
 	{ID: 1, Nama: "Indomie Goreng", Harga: 3500, Stok: 100},
 	{ID: 2, Nama: "Teh Botol", Harga: 3000, Stok: 50},
 	{ID: 3, Nama: "Kecap Bango", Harga: 12000, Stok: 20},
 }
 
-var categories = []Category{
-	{ID: 1, Name: "Makanan", Description: "Kategori produk makanan"},
-	{ID: 2, Name: "Minuman", Description: "Kategori produk minuman"},
-	{ID: 3, Name: "Bumbu", Description: "Kategori bumbu dapur"},
-}
 
-// ==================== CATEGORY HANDLERS ====================
-
-// GetAllCategories godoc
-// @Summary      Get all categories
-// @Description  Get list of all categories
-// @Tags         categories
-// @Accept       json
-// @Produce      json
-// @Success      200  {array}   Category
-// @Router       /api/categories [get]
-func getAllCategories(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(categories)
-}
-
-// CreateCategory godoc
-// @Summary      Create new category
-// @Description  Add a new category
-// @Tags         categories
-// @Accept       json
-// @Produce      json
-// @Param        category  body      Category  true  "Category data"
-// @Success      201       {object}  Category
-// @Failure      400       {object}  map[string]string
-// @Router       /api/categories [post]
-func createCategory(w http.ResponseWriter, r *http.Request) {
-	var categoryBaru Category
-	err := json.NewDecoder(r.Body).Decode(&categoryBaru)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	categoryBaru.ID = len(categories) + 1
-	categories = append(categories, categoryBaru)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(categoryBaru)
-}
-
-// GetCategoryByID godoc
-// @Summary      Get category by ID
-// @Description  Get single category by ID
-// @Tags         categories
-// @Accept       json
-// @Produce      json
-// @Param        id   path      int  true  "Category ID"
-// @Success      200  {object}  Category
-// @Failure      400  {object}  map[string]string
-// @Failure      404  {object}  map[string]string
-// @Router       /api/categories/{id} [get]
-func getCategoryByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-
-	for _, c := range categories {
-		if c.ID == id {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(c)
-			return
-		}
-	}
-
-	http.Error(w, "Category tidak ditemukan", http.StatusNotFound)
-}
-
-// UpdateCategory godoc
-// @Summary      Update category
-// @Description  Update category by ID
-// @Tags         categories
-// @Accept       json
-// @Produce      json
-// @Param        id        path      int       true  "Category ID"
-// @Param        category  body      Category  true  "Category data"
-// @Success      200       {object}  Category
-// @Failure      400       {object}  map[string]string
-// @Failure      404       {object}  map[string]string
-// @Router       /api/categories/{id} [put]
-func updateCategory(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-
-	var updateData Category
-	err = json.NewDecoder(r.Body).Decode(&updateData)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	for i := range categories {
-		if categories[i].ID == id {
-			updateData.ID = id
-			categories[i] = updateData
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(updateData)
-			return
-		}
-	}
-
-	http.Error(w, "Category tidak ditemukan", http.StatusNotFound)
-}
-
-// DeleteCategory godoc
-// @Summary      Delete category
-// @Description  Delete category by ID
-// @Tags         categories
-// @Accept       json
-// @Produce      json
-// @Param        id   path      int  true  "Category ID"
-// @Success      200  {object}  map[string]string
-// @Failure      400  {object}  map[string]string
-// @Failure      404  {object}  map[string]string
-// @Router       /api/categories/{id} [delete]
-func deleteCategory(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-
-	for i, c := range categories {
-		if c.ID == id {
-			categories = append(categories[:i], categories[i+1:]...)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{
-				"message": "Category berhasil dihapus",
-			})
-			return
-		}
-	}
-
-	http.Error(w, "Category tidak ditemukan", http.StatusNotFound)
-}
 
 // ==================== PRODUK HANDLERS (existing) ====================
 
@@ -384,8 +232,6 @@ func main() {
 	}
 
 	//Setup database
-
-
 	db, err := database.InitDB(config.DBConn)
 	fmt.Println("DB Connection String:", config.DBConn)
 	if config.DBConn == "" {
@@ -396,46 +242,21 @@ func main() {
 	}
 	defer db.Close()
 
-	// ========== CATEGORY ROUTES ==========
-	http.HandleFunc("/api/categories/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			getCategoryByID(w, r)
-		} else if r.Method == "PUT" {
-			updateCategory(w, r)
-		} else if r.Method == "DELETE" {
-			deleteCategory(w, r)
-		}
-	})
 
-	http.HandleFunc("/api/categories", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			getAllCategories(w, r)
-		} else if r.Method == "POST" {
-			createCategory(w, r)
-		}
-	})
+	productRepo := repositories.NewProductRepository(db)
+	productService := services.NewProductService(productRepo)
+	productHandler := handlers.NewProductHandler(productService)
 
-	// ========== PRODUK ROUTES ==========
-	http.HandleFunc("/api/produk/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			getProdukByID(w, r)
-		} else if r.Method == "PUT" {
-			updateProduk(w, r)
-		} else if r.Method == "DELETE" {
-			deleteProduk(w, r)
-		}
-	})
+	categoryRepo := repositories.NewCategoryRepository(db)
+	categoryService := services.NewCategoryService(categoryRepo)
+	categoryHandler := handlers.NewCategoryHandler(categoryService)
 
-	http.HandleFunc("/api/produk", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			getAllProduk(w, r)
-		} else if r.Method == "POST" {
-			createProduk(w, r)
-		}
-	})
-
+	// Setup routes
+	http.HandleFunc("/api/produk", productHandler.HandleProducts)
+	http.HandleFunc("/api/produk/", productHandler.HandleProductByID)
+	http.HandleFunc("/api/categories", categoryHandler.HandleCategories)
+	http.HandleFunc("/api/categories/", categoryHandler.HandleCategoryByID)
 	http.HandleFunc("/api/health", healthCheck)
-
 	// Swagger UI
 	http.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 
